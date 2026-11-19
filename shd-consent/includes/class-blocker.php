@@ -22,6 +22,14 @@ final class Blocker {
 	const RUNNABLE = array( '', 'text/javascript', 'application/javascript', 'application/x-javascript', 'text/ecmascript', 'module' );
 
 	/**
+	 * Types a performance plugin writes on a script it holds back itself, and the attribute it
+	 * moves the address to. This banner normally runs first (its output buffer starts at
+	 * template_redirect 10000, SHD Performance's at 9999), so it sees the untouched tags; this
+	 * keeps the rules working if that order ever changes or another plugin holds scripts back.
+	 */
+	const DELAYED = array( 'shd/delayed' => 'data-shd-src' );
+
+	/**
 	 * Built-in rules: category, where to look (src or inline code), text to find.
 	 */
 	const RULES = array(
@@ -75,17 +83,22 @@ final class Blocker {
 		$p     = new \WP_HTML_Tag_Processor( $html );
 		$held  = 0;
 		while ( $p->next_tag( 'SCRIPT' ) ) {
-			$type = strtolower( trim( (string) $p->get_attribute( 'type' ) ) );
-			if ( ! in_array( $type, self::RUNNABLE, true ) ) {
+			$type    = strtolower( trim( (string) $p->get_attribute( 'type' ) ) );
+			$waiting = isset( self::DELAYED[ $type ] ) ? self::DELAYED[ $type ] : '';
+			if ( '' === $waiting && ! in_array( $type, self::RUNNABLE, true ) ) {
 				continue;
 			}
 			$id   = (string) $p->get_attribute( 'id' );
-			$src  = $p->get_attribute( 'src' );
+			$src  = $p->get_attribute( '' !== $waiting ? $waiting : 'src' );
 			$src  = is_string( $src ) ? trim( $src ) : '';
 			$tool = '' !== $src ? Frontend::replaced( $src ) : '';
 			if ( '' !== $tool ) {
 				// Another consent tool written straight into the page (theme, code snippet): inert.
 				$p->remove_attribute( 'src' );
+				if ( '' !== $waiting ) {
+					$p->remove_attribute( $waiting );
+					$p->remove_attribute( 'data-shd-async' );
+				}
 				$p->set_attribute( 'type', 'text/plain' );
 				$p->set_attribute( 'data-shd-stopped', $tool );
 				Frontend::stopped( $tool, '' !== $id ? $id : 'page' );
@@ -100,7 +113,9 @@ final class Blocker {
 			if ( '' === $category ) {
 				continue;
 			}
-			if ( '' !== $type ) {
+			if ( '' !== $waiting ) {
+				self::take_over( $p, $waiting, $src );
+			} elseif ( '' !== $type ) {
 				$p->set_attribute( 'data-shd-type', $type );
 			}
 			$p->set_attribute( 'type', 'text/plain' );
@@ -124,6 +139,30 @@ final class Blocker {
 			}
 		}
 		return $rules;
+	}
+
+	/**
+	 * Takes a script that a performance plugin holds back for the first interaction: its address
+	 * and its async flag are written as the browser knows them, and process() then makes it
+	 * text/plain, so consent.js starts it once its category is allowed and the performance
+	 * plugin's loader, which looks for its own type, no longer finds it. A data-shd-type the
+	 * performance plugin wrote already holds the script's original type, so it is left alone.
+	 *
+	 * @param \WP_HTML_Tag_Processor $p    Processor.
+	 * @param string                 $attr Attribute the address was moved to.
+	 * @param string                 $src  The address ('' for an inline script).
+	 */
+	private static function take_over( $p, $attr, $src ) {
+		$p->remove_attribute( $attr );
+		if ( '' !== $src ) {
+			// esc_url() inside set_attribute() refuses a data: URL; the script then keeps no
+			// address and stays inert, which is the safe way round for one that needs consent.
+			$p->set_attribute( 'src', $src );
+		}
+		if ( null !== $p->get_attribute( 'data-shd-async' ) ) {
+			$p->remove_attribute( 'data-shd-async' );
+			$p->set_attribute( 'async', true );
+		}
 	}
 
 	/**
