@@ -4,7 +4,7 @@ Tags: cookie banner, consent, gdpr, consent mode
 Requires at least: 6.7
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.1
+Stable tag: 1.0.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -26,6 +26,9 @@ Own cookie consent banner: no third-party service, no page-view or domain limits
 The texts and the list of services must match your privacy policy; have them checked by whoever advises you on data protection.
 
 == Changelog ==
+
+= 1.0.2 =
+* A tracking script that a performance plugin has already held back for the first interaction (SHD Performance writes type="shd/delayed" and moves the address to data-shd-src) is recognised and held back for consent instead. Before, only the types a browser runs were looked at, so such a script was skipped and ran without consent wherever that plugin rewrote the page first.
 
 = 1.0.1 =
 * While the banner is on, CookieFirst scripts that are still added by something other than the CookieFirst plugin (for example SHD Tracking Manager’s COOKIE_FIRST_API setting) are stopped. Before, visitors could see CookieFirst’s banner and its round button behind this one, and both tools kept their own record of the choice.
